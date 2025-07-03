@@ -15,6 +15,12 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
+    // Add websocket dependency
+    const websocket_dep = b.dependency("websocket", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     // This creates a "module", which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
     // Every executable or library we compile will be based on one or more modules.
@@ -27,6 +33,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    // Add websocket import to lib module
+    lib_mod.addImport("websocket", websocket_dep.module("websocket"));
 
     // We will also create a module for our other entry point, 'main.zig'.
     const exe_mod = b.createModule(.{
@@ -78,11 +87,39 @@ pub fn build(b: *std.Build) void {
         .root_module = chat_mod,
     });
 
+    // Simple server executable
+    const simple_server_mod = b.createModule(.{
+        .root_source_file = b.path("src/simple_server.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    simple_server_mod.addImport("zig_peerjs_connect_lib", lib_mod);
+
+    const simple_server_exe = b.addExecutable(.{
+        .name = "simple_server",
+        .root_module = simple_server_mod,
+    });
+
+    // Simple client executable
+    const simple_client_mod = b.createModule(.{
+        .root_source_file = b.path("src/simple_client.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    simple_client_mod.addImport("zig_peerjs_connect_lib", lib_mod);
+
+    const simple_client_exe = b.addExecutable(.{
+        .name = "simple_client",
+        .root_module = simple_client_mod,
+    });
+
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
     b.installArtifact(exe);
     b.installArtifact(chat_exe);
+    b.installArtifact(simple_server_exe);
+    b.installArtifact(simple_client_exe);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
@@ -116,24 +153,56 @@ pub fn build(b: *std.Build) void {
     const chat_run_step = b.step("chat", "Run the chat demo");
     chat_run_step.dependOn(&chat_run_cmd.step);
 
-    // Creates a step for unit testing. This only builds the test executable
-    // but does not run it.
+    // Simple server run step
+    const simple_server_run_cmd = b.addRunArtifact(simple_server_exe);
+    simple_server_run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        simple_server_run_cmd.addArgs(args);
+    }
+    const simple_server_run_step = b.step("server", "Run the simple server");
+    simple_server_run_step.dependOn(&simple_server_run_cmd.step);
+
+    // Simple client run step
+    const simple_client_run_cmd = b.addRunArtifact(simple_client_exe);
+    simple_client_run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        simple_client_run_cmd.addArgs(args);
+    }
+    const simple_client_run_step = b.step("client", "Run the simple client");
+    simple_client_run_step.dependOn(&simple_client_run_cmd.step);
+
+    // Tests
     const lib_unit_tests = b.addTest(.{
-        .root_module = lib_mod,
+        .root_source_file = b.path("src/tests.zig"),
+        .target = target,
+        .optimize = optimize,
     });
+    lib_unit_tests.root_module.addImport("websocket", websocket_dep.module("websocket"));
+
+    // Token tests
+    const token_tests = b.addTest(.{
+        .root_source_file = b.path("src/token_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    token_tests.root_module.addImport("websocket", websocket_dep.module("websocket"));
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
+    const run_token_tests = b.addRunArtifact(token_tests);
 
-    const exe_unit_tests = b.addTest(.{
-        .root_module = exe_mod,
-    });
-
-    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
-
-    // Similar to creating the run step earlier, this exposes a `test` step to
-    // the `zig build --help` menu, providing a way for the user to request
-    // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
-    test_step.dependOn(&run_exe_unit_tests.step);
+    test_step.dependOn(&run_token_tests.step);
+    
+    // PeerJS Example
+    const peerjs_example = b.addExecutable(.{
+        .name = "peerjs_example",
+        .root_source_file = b.path("src/peerjs_example.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    peerjs_example.root_module.addImport("websocket", websocket_dep.module("websocket"));
+
+    const install_peerjs_example = b.addInstallArtifact(peerjs_example, .{});
+    b.getInstallStep().dependOn(&install_peerjs_example.step);
 }

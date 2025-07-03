@@ -31,7 +31,7 @@ fn basicExample(allocator: std.mem.Allocator) !void {
     const demo_target = "demo-peer-12345";
 
     if (peerjs.isValidPeerId(demo_target)) {
-        var connection = client.connect(demo_target) catch |err| switch (err) {
+        var connection = client.connectToPeer(demo_target) catch |err| switch (err) {
             peerjs.PeerError.InvalidPeerId => {
                 print("❌ Invalid peer ID format\n", .{});
                 return;
@@ -219,9 +219,10 @@ test "error handling" {
     try std.testing.expectError(peerjs.PeerError.InvalidPeerId, result);
 }
 
-test "use other module" {
-    // Keep the original test for compatibility
-    try std.testing.expectEqual(@as(i32, 150), peerjs.add(100, 50));
+test "basic library functionality" {
+    // Test that the library can be imported and basic functions work
+    try std.testing.expect(peerjs.isValidPeerId("test-peer"));
+    try std.testing.expect(!peerjs.isValidPeerId(""));
 }
 
 test "fuzz example" {

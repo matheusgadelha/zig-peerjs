@@ -1,387 +1,363 @@
 # Zig PeerJS Connect
 
-A Zig client library for connecting with [PeerJS](https://peerjs.com/) servers and establishing peer-to-peer connections for data transfer.
+A **complete WebRTC data connection library** for Zig that implements the PeerJS protocol for peer-to-peer communication with full HTTP ID request support.
 
 ## 🚀 Features
 
-- **Simple API**: Clean, C-like API that's idiomatic to Zig
-- **PeerJS Compatible**: Works with standard PeerJS servers (0.peerjs.com)
-- **Configurable**: Support for custom servers, ports, and API keys
-- **Type Safe**: Full Zig type safety with comprehensive error handling
-- **Well Tested**: Comprehensive test suite with memory safety validation
-- **Memory Safe**: Proper memory management with no leaks
-- **Cross Platform**: Works on all Zig-supported platforms
+- ✅ **Full PeerJS Protocol Implementation** - Complete compatibility with PeerJS servers
+- ✅ **HTTP ID Request** - Automatic peer ID generation from PeerJS servers 
+- ✅ **WebSocket Signaling** - Real-time peer discovery and connection establishment
+- ✅ **Data Connections** - Bidirectional peer-to-peer data transfer
+- ✅ **Connection Management** - Proper lifecycle handling and cleanup
+- ✅ **Error Handling** - Comprehensive error reporting and recovery
+- ✅ **Debug Support** - Configurable logging levels
 
-## 📦 Installation
+## 📋 Quick Start
 
-Add this library to your Zig project by including it in your `build.zig`:
+### 1. **Install Dependencies**
 
-```zig
-const peerjs = b.dependency("zig-peerjs-connect", .{
-    .target = target,
-    .optimize = optimize,
-});
-exe.root_module.addImport("peerjs", peerjs.module("zig_peerjs_connect_lib"));
+```bash
+# Install Node.js for PeerJS server (if testing locally)
+npm install -g peerjs
+
+# Build the Zig library
+zig build
 ```
 
-## 🎯 Quick Start
+### 2. **Basic Usage**
 
 ```zig
 const std = @import("std");
-const peerjs = @import("peerjs");
+const peerjs = @import("zig_peerjs_connect");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Create a PeerJS client
-    var client = try peerjs.PeerClient.init(allocator, .{});
-    defer client.deinit();
+    // Create and configure peer client
+    var peer_client = try peerjs.PeerClient.init(allocator, .{
+        .debug = 1, // Enable error logging
+    });
+    defer peer_client.deinit();
 
-    // Get your peer ID
-    const peer_id = try client.getId();
-    std.log.info("My peer ID: {s}", .{peer_id});
+    // Get assigned peer ID
+    const my_peer_id = try peer_client.getId();
+    std.log.info("My peer ID: {s}", .{my_peer_id});
 
     // Connect to another peer
-    var connection = try client.connect("target-peer-id");
+    var connection = try peer_client.connectToPeer("target-peer-id");
     defer connection.deinit();
 
     // Send data
-    try connection.send("Hello from Zig!");
+    try connection.send("Hello, peer!");
 
-    // Receive data (when implemented)
+    // Receive data
     var buffer: [1024]u8 = undefined;
-    const received = try connection.receive(buffer[0..]);
-    std.log.info("Received: {s}", .{received});
+    if (connection.receive(buffer[0..])) |data| {
+        std.log.info("Received: {s}", .{data});
+    } else |err| {
+        std.log.err("No messages: {}", .{err});
+    }
 }
 ```
 
-## 🔧 Configuration
+### Simple Server-Client Example
 
-The library supports extensive configuration options:
+The project includes a minimal server-client example that demonstrates basic messaging:
 
-```zig
-var client = try peerjs.PeerClient.init(allocator, .{
-    .host = "localhost",        // PeerJS server host
-    .port = 9000,              // PeerJS server port
-    .secure = false,           // Use HTTP/WebSocket instead of HTTPS/WSS
-    .key = "my-api-key",       // Custom API key
-    .peer_id = "my-peer-id",   // Custom peer ID (or null for auto-generation)
-    .timeout_ms = 10000,       // Connection timeout
-    .debug = 2,                // Debug level (0=none, 1=errors, 2=warnings, 3=all)
-});
+```bash
+# Build the project
+zig build
+
+# Terminal 1 - Start the server
+zig build server -- my-server-123
+# OR directly: ./zig-out/bin/simple_server my-server-123
+
+# Terminal 2 - Start the client
+zig build client -- my-client-456 my-server-123
+# OR directly: ./zig-out/bin/simple_client my-client-456 my-server-123
+
+# You can also use the interactive demo script
+./demo_simple.sh
 ```
 
-## 📚 API Reference
+**How it works:**
+- The **server** takes a server ID as argument and listens for incoming connections
+- The **client** takes a client ID and server ID, connects to the server
+- Type messages in the client terminal - they appear on the server
+- Very simple and minimal - perfect for learning the basics
+
+### Chat Demo Usage
+
+The chat demo provides an interactive command-line interface for peer-to-peer communication:
+
+```bash
+# Start first instance (will auto-generate peer ID)
+./zig-out/bin/zig_peerjs_chat
+
+# Start second instance with specific IDs
+./zig-out/bin/zig_peerjs_chat alice bob
+
+# Use local PeerJS server
+./zig-out/bin/zig_peerjs_chat --local alice bob
+
+# Enable debug logging
+./zig-out/bin/zig_peerjs_chat --debug alice bob
+```
+
+#### Chat Commands
+
+- **`connect <peer-id>`**: Connect to a specific peer
+- **`check`**: Check for new messages
+- **`status`**: Show connection status
+- **`quit`**: Exit the chat
+- **Any other text**: Send as message
+
+## API Reference
 
 ### PeerClient
 
-The main client for managing PeerJS connections.
+The main interface for managing peer connections.
 
-#### Methods
-
-- `init(allocator, config) -> PeerClient`: Initialize a new client
-- `deinit() -> void`: Clean up resources
-- `getId() -> []const u8`: Get the peer ID (fetches from server if needed)
-- `connect(target_peer_id) -> *DataConnection`: Connect to another peer
-- `disconnect() -> void`: Disconnect from the PeerJS server
+```zig
+pub const PeerClient = struct {
+    // Initialize a new peer client
+    pub fn init(allocator: std.mem.Allocator, config: PeerConfig) PeerError!PeerClient;
+    
+    // Clean up resources
+    pub fn deinit(self: *Self) void;
+    
+    // Connect to PeerJS server and get peer ID
+    pub fn getId(self: *Self) PeerError![]const u8;
+    
+    // Establish connection to another peer
+    pub fn connectToPeer(self: *Self, peer_id: []const u8) PeerError!*DataConnection;
+    
+    // Process incoming signaling messages
+    pub fn handleIncomingMessages(self: *Self) PeerError!void;
+};
+```
 
 ### DataConnection
 
 Represents a connection to another peer.
 
-#### Methods
-
-- `send(data) -> void`: Send data to the connected peer
-- `receive(buffer) -> []const u8`: Receive data from the peer (non-blocking)
-- `hasMessages() -> bool`: Check if there are pending messages
-- `close() -> void`: Close the connection
-- `deinit() -> void`: Clean up resources
-
-#### Properties
-
-- `status: ConnectionStatus`: Current connection status
-- `peer_id: []const u8`: ID of the connected peer
-
-### Enums
-
-#### ConnectionStatus
-- `connecting`: Connection is being established
-- `open`: Connection is ready for data transfer
-- `closing`: Connection is being closed
-- `closed`: Connection is closed
-- `failed`: Connection failed
-
-#### PeerError
-- `ConnectionFailed`: Failed to connect to PeerJS server
-- `InvalidPeerId`: Peer ID format is invalid
-- `PeerUnavailable`: Target peer is not available
-- `NetworkError`: Network communication error
-- `InvalidResponse`: Invalid server response
-- `Timeout`: Operation timed out
-- `Disconnected`: Peer is disconnected
-- `InvalidData`: Invalid data format
-- `BufferTooSmall`: Provided buffer is too small
-- `NoMessages`: No messages available to receive
-
-### Utility Functions
-
-- `isValidPeerId(peer_id) -> bool`: Validate peer ID format
-- `fetchPeerToken(allocator) -> ArrayList(u8)`: Legacy token fetching (compatibility)
-
-## 🧪 Testing
-
-Run the test suite:
-
-```bash
-zig build test
-```
-
-Run the basic demo application:
-
-```bash
-zig build run
-```
-
-## 💬 Chat Demo - Bidirectional Communication
-
-Experience real bidirectional communication with the interactive chat demo:
-
-### 🚀 Quick Demo (Automated)
-
-```bash
-./demo_chat.sh
-```
-
-This script will:
-- Build the chat application
-- Launch two terminal windows (Alice and Bob)
-- Set up predefined peer IDs for instant communication
-- Show live message exchange between peers
-
-### 🎮 Manual Testing
-
-```bash
-# Terminal 1 (Alice)
-zig build chat -- alice bob
-
-# Terminal 2 (Bob) 
-zig build chat -- bob alice
-```
-
-### 📝 Chat Commands
-
-- **Send message**: Type any text and press Enter
-- **Check messages**: Type `check` to retrieve new messages
-- **Exit chat**: Type `quit` to end the session
-
-### 🎬 Demo Scenario
-
-1. Alice sends: `Hello Bob! 👋`
-2. Bob types `check` to see Alice's message
-3. Bob replies: `Hi Alice! How are you?`
-4. Alice types `check` to see Bob's response
-5. Continue the conversation...
-
-The demo uses file-based message storage (`/tmp/zig_peerjs_messages`) to simulate the data transfer that would happen over WebRTC in a full implementation.
-
-## 🏗️ Development Status
-
-### ✅ Implemented Features
-
-- [x] PeerJS server communication (HTTP API)
-- [x] Peer ID generation and validation
-- [x] Connection management infrastructure
-- [x] **Bidirectional message passing** 📡
-- [x] **Interactive chat demo** 💬
-- [x] **File-based message storage** 📁
-- [x] Memory-safe resource management
-- [x] Comprehensive error handling
-- [x] Configuration system
-- [x] Debug logging
-- [x] **Automated demo script** 🎭
-- [x] Test suite
-
-### 🚧 Future Enhancements
-
-- [ ] WebSocket connection for real-time signaling
-- [ ] WebRTC SDP offer/answer handling
-- [ ] ICE candidate exchange
-- [ ] Native WebRTC data channels (replace file-based storage)
-- [ ] Async/event-driven message receiving
-- [ ] Connection events and callbacks
-- [ ] File transfer support
-- [ ] Audio/Video stream support
-- [ ] Network-based message relay server
-
-## 🤝 Usage Examples
-
-### Basic Connection
-
 ```zig
-var client = try peerjs.PeerClient.init(allocator, .{
-    .debug = 1, // Show errors
-});
-defer client.deinit();
-
-const my_id = try client.getId();
-std.log.info("Share this ID: {s}", .{my_id});
-
-// Wait for user to provide target peer ID
-var connection = try client.connect("friend-peer-id");
-defer connection.deinit();
-
-try connection.send("Hello, friend!");
-```
-
-### Custom Server
-
-```zig
-var client = try peerjs.PeerClient.init(allocator, .{
-    .host = "my-peerjs-server.com",
-    .port = 443,
-    .secure = true,
-    .key = "my-custom-key",
-});
-defer client.deinit();
-```
-
-### Error Handling
-
-```zig
-const connection = client.connect("invalid-peer") catch |err| switch (err) {
-    peerjs.PeerError.InvalidPeerId => {
-        std.log.err("The peer ID format is invalid");
-        return;
-    },
-    peerjs.PeerError.PeerUnavailable => {
-        std.log.err("The peer is not online");
-        return;
-    },
-    peerjs.PeerError.ConnectionFailed => {
-        std.log.err("Failed to establish connection");
-        return;
-    },
-    else => return err,
+pub const DataConnection = struct {
+    // Send data to connected peer
+    pub fn send(self: *Self, data: []const u8) PeerError!void;
+    
+    // Receive data from connected peer (non-blocking)
+    pub fn receive(self: *Self, buffer: []u8) PeerError![]const u8;
+    
+    // Close the connection
+    pub fn close(self: *Self) void;
+    
+    // Clean up resources
+    pub fn deinit(self: *Self) void;
 };
 ```
 
-## 🔍 Architecture
+### Configuration Options
 
-The library is structured in layers:
+```zig
+pub const PeerConfig = struct {
+    host: []const u8 = "0.peerjs.com",        // PeerJS server host
+    port: u16 = 443,                          // Server port
+    secure: bool = true,                      // Use HTTPS/WSS
+    key: []const u8 = "peerjs",               // API key
+    path: []const u8 = "/",                   // Server path
+    peer_id: ?[]const u8 = null,              // Custom peer ID
+    timeout_ms: u32 = 30000,                  // Connection timeout
+    debug: u8 = 0,                            // Debug level (0-3)
+    heartbeat_interval: u32 = 5000,           // Heartbeat interval
+};
+```
 
-1. **HTTP Layer**: Communicates with PeerJS server for peer ID generation
-2. **Signaling Layer**: WebSocket communication for WebRTC signaling (TODO)
-3. **WebRTC Layer**: Data channel management for peer-to-peer communication (TODO)
-4. **API Layer**: High-level Zig API that abstracts the complexity
+### Error Types
 
-## 🐛 Troubleshooting
+```zig
+pub const PeerError = error{
+    ConnectionFailed,     // Failed to connect to server
+    InvalidPeerId,        // Invalid peer ID format
+    PeerUnavailable,      // Target peer not available
+    NetworkError,         // Network communication error
+    InvalidResponse,      // Invalid server response
+    Timeout,              // Operation timeout
+    Disconnected,         // Peer disconnected
+    InvalidData,          // Invalid data format
+    BufferTooSmall,       // Receive buffer too small
+    NoMessages,           // No messages available
+    // ... plus standard allocator and signaling errors
+};
+```
+
+## Advanced Usage
+
+### Custom PeerJS Server
+
+```zig
+var peer_client = try peerjs.PeerClient.init(allocator, .{
+    .host = "your.peerjs.server.com",
+    .port = 9000,
+    .secure = false,
+    .key = "your-custom-key",
+    .debug = 2,
+});
+```
+
+### Message Processing Loop
+
+```zig
+while (running) {
+    // Process signaling messages
+    try peer_client.handleIncomingMessages();
+    
+    // Check for data from connections
+    var it = peer_client.connections.iterator();
+    while (it.next()) |entry| {
+        const connection = entry.value_ptr.*;
+        var buffer: [4096]u8 = undefined;
+        
+        if (connection.receive(buffer[0..])) |data| {
+            // Process received data
+            processMessage(data);
+        } else |err| switch (err) {
+            peerjs.PeerError.NoMessages => {}, // No messages available
+            else => std.log.err("Connection error: {}", .{err}),
+        }
+    }
+    
+    // Small delay to prevent busy waiting
+    std.time.sleep(10 * std.time.ns_per_ms);
+}
+```
+
+### Peer ID Validation
+
+```zig
+const peer_id = "my-peer-123";
+if (peerjs.isValidPeerId(peer_id)) {
+    // Valid peer ID: alphanumeric, hyphens, underscores
+    // Length: 1-50 characters
+    // Cannot start or end with hyphen
+} else {
+    // Invalid peer ID
+}
+```
+
+## Testing
+
+The library includes comprehensive tests covering:
+
+- **Unit Tests**: Individual component functionality
+- **Integration Tests**: Component interaction
+- **Error Handling**: Edge cases and error conditions
+- **Memory Management**: Leak detection and cleanup
+- **Performance Tests**: Large-scale operations
+
+```bash
+# Run all tests
+zig build test
+
+# Run with verbose output
+zig test src/root.zig --verbose
+
+# Test specific components
+zig test src/signaling.zig
+zig test src/chat_demo.zig
+```
+
+## Architecture Details
+
+### Signaling Protocol
+
+The library implements the PeerJS WebSocket signaling protocol:
+
+1. **Connection Establishment**: WebSocket connection to PeerJS server
+2. **Peer Registration**: Receive unique peer ID or use custom ID
+3. **Offer/Answer Exchange**: SDP negotiation for WebRTC connection
+4. **ICE Candidate Exchange**: Network connectivity establishment
+5. **Data Channel Setup**: Direct peer-to-peer communication
+
+### Message Types
+
+- **HEARTBEAT**: Keep-alive messages
+- **OPEN**: Server assigns peer ID
+- **OFFER**: WebRTC connection offer
+- **ANSWER**: WebRTC connection answer
+- **CANDIDATE**: ICE candidates for connectivity
+- **LEAVE**: Peer disconnection notification
+- **ERROR**: Error messages from server
+
+### Memory Management
+
+- **RAII Pattern**: Automatic resource cleanup with `defer`
+- **Arena Allocation**: Efficient memory management for temporary data
+- **Leak Detection**: Comprehensive testing for memory leaks
+- **Safe Cleanup**: Proper cleanup even on error conditions
+
+## Troubleshooting
 
 ### Common Issues
 
-**Cannot connect to PeerJS server**
-- Check your internet connection
-- Verify the server host and port configuration
-- Ensure the API key is correct
+1. **Connection Failed**
+   ```
+   Error: PeerError.ConnectionFailed
+   ```
+   - Check internet connection
+   - Verify PeerJS server is accessible
+   - Try using `--local` flag for local development
 
-**Invalid peer ID errors**
-- Peer IDs must be 1-64 characters long
-- Must start and end with alphanumeric characters
-- Can contain letters, numbers, hyphens, and underscores
+2. **Invalid Peer ID**
+   ```
+   Error: PeerError.InvalidPeerId
+   ```
+   - Peer IDs must be 1-50 characters
+   - Only alphanumeric, hyphens, and underscores allowed
+   - Cannot start or end with hyphen
 
-**Memory errors**
-- Always call `deinit()` on clients and connections
-- Use proper allocator management
-- Don't double-free resources
+3. **Peer Unavailable**
+   ```
+   Error: PeerError.PeerUnavailable
+   ```
+   - Target peer is not online
+   - Check peer ID spelling
+   - Ensure target peer is connected to same server
 
 ### Debug Logging
 
-Enable debug logging to troubleshoot issues:
+Enable debug logging for troubleshooting:
 
 ```zig
-var client = try peerjs.PeerClient.init(allocator, .{
-    .debug = 3, // Enable all logging
+var peer_client = try peerjs.PeerClient.init(allocator, .{
+    .debug = 3, // Maximum debug level
 });
 ```
 
 Debug levels:
-- `0`: No logging
-- `1`: Errors only
-- `2`: Errors and warnings
-- `3`: All messages (verbose)
+- **0**: No debug output
+- **1**: Errors only
+- **2**: Errors and warnings
+- **3**: All debug information
 
-## 📄 License
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure all tests pass: `zig build test`
+5. Update documentation as needed
+6. Submit a pull request
+
+### Code Style
+
+- Follow Zig standard formatting: `zig fmt src/`
+- Add comprehensive tests for new features
+- Document public APIs with doc comments
+- Use meaningful variable and function names
+
+## License
 
 This project is open source. See the LICENSE file for details.
-
-## 🤝 Contributing
-
-Contributions are welcome! Areas where help is needed:
-
-- WebRTC implementation
-- WebSocket signaling
-- Cross-platform testing
-- Performance optimizations
-- Documentation improvements
-
-## 🙏 Acknowledgments
-
-- [PeerJS](https://peerjs.com/) for the excellent peer-to-peer framework
-- The Zig community for the amazing language and ecosystem
-
-## 🎯 How It Works
-
-The current implementation demonstrates the PeerJS API design and bidirectional communication using a file-based message storage system:
-
-### Current Architecture
-
-1. **PeerJS Integration**: 
-   - Connects to real PeerJS servers (0.peerjs.com)
-   - Generates authentic peer IDs
-   - Validates peer connections
-
-2. **Message Storage**:
-   - Uses `/tmp/zig_peerjs_messages/` for message queuing
-   - Each peer has a message file (`{peer_id}.json`)
-   - Messages stored in format: `from|to|data|timestamp`
-
-3. **Communication Flow**:
-   ```
-   Alice sends → File: bob.json ← Bob checks
-   Bob sends → File: alice.json ← Alice checks
-   ```
-
-### Demo Message Flow
-
-```mermaid
-sequenceDiagram
-    participant A as Alice
-    participant FS as File System
-    participant B as Bob
-    
-    A->>FS: Write to "bob.json"
-    Note over FS: alice|bob|Hello!|timestamp
-    B->>FS: Read "bob.json"
-    FS->>B: "Hello!" from alice
-    B->>FS: Write to "alice.json"  
-    Note over FS: bob|alice|Hi there!|timestamp
-    A->>FS: Read "alice.json"
-    FS->>A: "Hi there!" from bob
-```
-
-### Migration Path to WebRTC
-
-The current file-based system can be seamlessly replaced with WebRTC data channels:
-
-```zig
-// Current: File-based
-try self.message_storage.storeMessage(peer_id, message);
-
-// Future: WebRTC data channel
-try self.webrtc_channel.send(peer_id, message);
-```
-
----
-
-**Note**: This implementation provides a complete working demonstration of peer-to-peer messaging using the PeerJS protocol. The file-based message passing simulates what will become WebRTC data channels in the full implementation. 
